@@ -58,22 +58,19 @@ function devudo_drush_command() {
   return $items;
 }
 
-/**
- * Command Function for devudo-server-check
- */
-function drush_devudo_server_check($name = ''){
-  drush_log('HELLO DEVUDO', 'ok');
-
-  // @TODO: Make this a drush pre hook (server destroy needs it too)
-  // Check for server
+function drush_devudo_server_check_validate($name = '') {
+  global $base_url;
+  drush_log("Validating $name", 'ok');
+  
+  // Check for drupal server node
   if (empty($name)){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'You must give me a server hostname.');
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, "Mising Argument: You must give me a server name.  It must match the title of a server node in the site $base_url.");
   }
   
   // Look for server node
   $result = db_query('SELECT nid FROM {node} WHERE type = :type AND title = :title', array(':type' => 'server', ':title' => $name));
   $nid = $result->fetchColumn(0);
-
+  
   // No nid, bail out.  
   if (!$nid){
     global $base_url;
@@ -82,30 +79,45 @@ function drush_devudo_server_check($name = ''){
 
   // Load Drupal node and attributes  
   $node = node_load($nid);
+  drush_set_context('drupal_server_node', $node);
+
+  if (empty($node->nid)){
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No way jose');
+  } else {
+    drush_log("Server $name loaded from $base_url/node/$id");
+  }
+}
+
+/**
+ * Command Function for devudo-server-check
+ */
+function drush_devudo_server_check($name = ''){
+  $node = drush_get_context('drupal_server_node');
   $attributes = $node->attributes;
-  drush_log("Drupal node $name found.  Looking for Chef node.", 'ok');
-  
+
   // Look for a chef node with this name
+  drush_log("Looking for chef node $name", 'ok');
   $server = shop_get_server($name);
+  
+  //
   if (!empty($server->name)) {
     $ip = $server->automatic->ipaddress;
     $uptime = $server->automatic->uptime;
-    drush_log("Chef node $server->name found with IP $ip. Online for $uptime", 'ok');
+    
+    drush_log("Chef node $server->name found with IP $ip.", 'ok');
+    drush_log("Connecting to $server->name [$ip] ...", 'status');
   
+    $cmd = "uptime";
+    $cmd_exec = escapeshellarg($cmd);
+    shop_exec("knife ssh name:$name -x devudo $cmd_exec -a ipaddress", TRUE);
+    
+    drush_log("Server connected?");
     // Since we found a server... we want to update it with our new attributes.
     // @TODO: ONLY do this if the chef node was created by us.  Let's add a
     // node[:devudo][:shopmaster] attribute.
     
     // @TODO: Take Drupal $node attributes, copy to server, run chef-client
     
-    
-    
-    
-    
-    
-    
-    
-
   }
   // NO CHEF MANAGED SERVER FOUND: Create server
   elseif ($server == 'not found') {
@@ -141,11 +153,25 @@ function drush_devudo_server_check($name = ''){
   // Then, take certain attributes we want to have back in devudo.com and save
   // them to the Drupal $node
   drush_log('Loading attributes to save back to web.', 'ok');
-  $node->field_ip[LANGUAGE_NONE][0]['value'] = $ip;
-  node_save($node);
+  
+  // @TODO: This fails when creating a new server!  This could be the MySQL
+  // Server problem!  The Build took 15 minutes, perhaps this is too long to
+  // keep the DB connection open?
   
 }
 
+function drush_devudo_post_server_check($name){
+  
+  drush_log("Hello post $name", 'ok');
+
+  $node->field_ip[LANGUAGE_NONE][0]['value'] = $ip;
+  
+  if (!node_save($node)){
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'node_save() failed.');
+  }
+  
+  drush_log("Hello from drush_devudo_post_server_check($name)", 'ok');
+}
 
 
 /**
@@ -197,22 +223,8 @@ function drush_shop_provision_server_create($server_fqdn){
 function drush_devudo_server_destroy($name){
   global $base_url;
   
-  // Check for server
-  if (empty($name)){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'You must give me a server hostname.');
-  }
-  
-  // Look for server node
-  $result = db_query('SELECT nid FROM {node} WHERE type = :type AND title = :title', array(':type' => 'server', ':title' => $name));
-  $nid = $result->fetchColumn(0);
+  $node = drush_get_context('drupal_server_node');
 
-  // No nid, bail out.  
-  if (!$nid){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No Drupal server node by that name was found in site ' . $base_url);
-  }
-
-  // Load Drupal node and attributes  
-  $node = node_load($nid);
   $attributes = $node->attributes;
   $ip = $attributes->devudo['ip'];
   
