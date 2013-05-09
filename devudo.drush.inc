@@ -53,7 +53,7 @@ function devudo_drush_command() {
     'aliases' => array(
       'server-destroy',
     ),
-    'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_FULL,
   );
   return $items;
 }
@@ -64,6 +64,7 @@ function devudo_drush_command() {
 function drush_devudo_server_check($name = ''){
   drush_log('HELLO DEVUDO', 'ok');
 
+  // @TODO: Make this a drush pre hook (server destroy needs it too)
   // Check for server
   if (empty($name)){
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'You must give me a server hostname.');
@@ -170,4 +171,62 @@ function drush_shop_provision_server_create($server_fqdn){
   if ($run_list && $data['Environment'] != '_fake'){
     shop_exec("knife node run_list add $server_fqdn $run_list");
   }
+}
+
+
+/**
+ * Command Function for devudo-server-destroy
+ * Basic wrapper for knife rackspace server delete.
+ *
+ * Right now we just hijack knife rackspace server list and parse it's output.
+ * I can't seem to find a --backend switch to let it give us JSON, and adding
+ * rackspace API code to this drush package seems like doubling code, since
+ * knife rackspace server list already does thir for us.
+ *
+ * @TODO: Figure out how to get JSON for the server list instead of parsing it
+ * as strings.
+ */
+function drush_devudo_server_destroy($name){
+  // Check for server
+  if (empty($name)){
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'You must give me a server hostname.');
+  }
+  
+  // Look for server node
+  $result = db_query('SELECT nid FROM {node} WHERE type = :type AND title = :title', array(':type' => 'server', ':title' => $name));
+  $nid = $result->fetchColumn(0);
+
+  // No nid, bail out.  
+  if (!$nid){
+    global $base_url;
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No Drupal server node by that name was found in site ' . $base_url);
+  }
+
+  // Load Drupal node and attributes  
+  $node = node_load($nid);
+  $attributes = $node->attributes;
+  
+  // Find a chef node with this name
+  $server = shop_get_server($name);
+  
+  if (!empty($server->name)) {
+    drush_log("Chef node $name found.  Preparing to destroy...", 'ok');
+    
+    // Get rackspace ID
+    $list = shop_exec_return('knife rackspace server list');
+    $keys = array_filter(array_map('trim', explode("  ", array_shift($list))));
+    foreach ($list as $row){
+      $item = array_filter(explode(" ", $row));
+      $data = array_combine($keys, $item);
+      
+      print_r($data);
+    }
+    
+  }
+  elseif ($server == 'not found') {
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No chef node with name $name."); 
+  } else {
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'Something is wrong with knife');
+  }
+  
 }
