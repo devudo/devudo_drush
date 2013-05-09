@@ -253,7 +253,14 @@ function drush_devudo_server_destroy($name){
         // -P for purge, deletes chef client and node records too.
         $cmd = "knife rackspace server delete $instance_id -P -y";
         shop_exec($cmd, TRUE);
+        
+        // Unpublish the server node:
+        $node->status = 0;
+        node_save($node);
+        
+        // Success!!
         drush_log("Rackspace server, chef client, and chef node $name successfully deleted.", 'success');
+        
         return ;
       }
     }
