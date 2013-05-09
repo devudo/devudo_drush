@@ -43,6 +43,18 @@ function devudo_drush_command() {
     ),
     'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
   );
+  
+  // Wrapper for knife rackspace server create.
+  $items['devudo-server-destroy'] = array(
+    'description' => 'Destroys a server.', 
+    'arguments' => array(
+      'hostname' => 'The hostname of the server to destroy.',
+    ),
+    'aliases' => array(
+      'server-destroy',
+    ),
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
+  );
   return $items;
 }
 
@@ -63,7 +75,8 @@ function drush_devudo_server_check($name = ''){
 
   // No nid, bail out.  
   if (!$nid){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No server node by that name was found.');
+    global $base_url;
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No Drupal server node by that name was found in site ' . $base_url);
   }
 
   // Load Drupal node and attributes  
@@ -95,13 +108,19 @@ function drush_devudo_server_check($name = ''){
     drush_set_option('role',  $attributes->devudo['chef_role']);
     drush_set_option('attributes', json_encode($attributes));
       
-    $data = drush_shop_provision_server_create($name);
+    drush_shop_provision_server_create($name);
     
-    if ($data) {
-      print_r($data);
+    // Now the server exists and a chef node should exist for it.
+    $server = shop_get_server($name);
+    
+    if (!empty($server->name)){
+      $ip = $server->automatic->ipaddress;
+      $uptime = $server->automatic->uptime;
+      drush_log("Chef node $server->name created! IP $ip. Online for $uptime", 'ok');
     } else {
-      return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'Something went wrong with knife server create.');
+      return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'Server was created, but no chef node was found!');
     }
+    
   }
   // Something else went wrong
   else {
@@ -113,7 +132,8 @@ function drush_devudo_server_check($name = ''){
   // Then, take certain attributes we want to have back in devudo.com and save
   // them to the Drupal $node
   drush_log('Loading attributes to save back to web.', 'ok');
-  
+  $node->field_ip[LANGUAGE_NONE][0]['value'] = $ip;
+  node_save($node);
   
 }
 
