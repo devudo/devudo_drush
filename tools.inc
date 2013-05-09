@@ -4,12 +4,17 @@
 /**
  * Helpful Exec
  */
-function shop_exec($command){
+function shop_exec($command, $interactive = FALSE){
   $lines = array();
   drush_log("[DEVUDO] Running: $command", "ok");
-  exec($command, $lines);
-  foreach ($lines as $line){
-    drush_log("[EXEC] $line", 'ok');
+  
+  if ($interactive){
+    drush_shell_exec_interactive($command);
+  } else {
+    exec($command, $lines);
+    foreach ($lines as $line){
+      drush_log("[EXEC] $line", 'ok');
+    }  
   }
 }
 

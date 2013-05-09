@@ -65,8 +65,10 @@ function drush_devudo_server_check($name = ''){
   if (!$nid){
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No server node by that name was found.');
   }
-  
+
+  // Load Drupal node and attributes  
   $node = node_load($nid);
+  $attributes = $node->attributes;
   drush_log("Drupal node $name found.  Looking for Chef node.", 'ok');
   
   // Look for a chef node with this name
@@ -86,15 +88,20 @@ function drush_devudo_server_check($name = ''){
   // NO CHEF MANAGED SERVER FOUND: Create server
   elseif ($server == 'not found') {
     // If none exists, call knife rackspace server create (make sure runlist is added)
-    drush_log("Chef node named $name not found.  Preparing to create...", 'warning');
+    drush_log("Chef node named $name not found. Preparing to create...", 'warning');
     
-    drush_set_option('rackspace_flavor', $rackspace_flavor);
-    drush_set_option('rackspace_image', $rackspace_image);
-    drush_set_option('role', $role);
-    drush_set_option('attributes', $attributes);
-    //  
-      //$data = drush_shop_provision_server_create($server_fqdn);
+    drush_set_option('rackspace_flavor', $attributes->devudo['rackspace_flavor']);
+    drush_set_option('rackspace_image', $attributes->devudo['rackspace_image']);
+    drush_set_option('role',  $attributes->devudo['chef_role']);
+    drush_set_option('attributes', json_encode($attributes));
+      
+    $data = drush_shop_provision_server_create($name);
     
+    if ($data) {
+      print_r($data);
+    } else {
+      return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'Something went wrong with knife server create.');
+    }
   }
   // Something else went wrong
   else {
@@ -105,7 +112,7 @@ function drush_devudo_server_check($name = ''){
   
   // Then, take certain attributes we want to have back in devudo.com and save
   // them to the Drupal $node
-  
+  drush_log('Loading attributes to save back to web.', 'ok');
   
   
 }
@@ -137,45 +144,10 @@ function drush_shop_provision_server_create($server_fqdn){
   
   // Not using shpo_exec here to try and avoid these logging errors.
   $cmd = "knife rackspace server create $options --server-name $server_fqdn --image $rackspace_image -Fjson -j $attributes_json";
-  
-  // run knife rackspace server create.
-  //$lines = shop_exec_return($cmd);
-  
-  /**
-   * SIMULATE
-   */
-  //$cmd =  "knife-rackspace-create-simulate $server_fqdn $role";
-  $lines = shop_exec_return($cmd);
-  
-    //drush_log("[EXEC] JUST KIDDING!  Moving on...", 'ok');
-    //$data['Instance ID'] =  'FAke33-eee3-47ee-b52d-RACk3RIDc24b';
-    //$data['Public IP Address'] =  "111.111.111.111";
-    //$data['Private IP Address'] =  "111.111.111.111";
-    //return $data;
-    //
-    //Instance ID: 051b356e-e6b3-47ee-b52d-a0cc03fdc24b
-    //Host ID: e8df6854910f156a954ed00f55b2ededf5ea22529c84a4f7165a14cd
-    //Name: devmaster.localhost
-    //Flavor: 512MB Standard Instance
-    //Image: Ubuntu 12.04 LTS (Precise Pangolin)
-    //Public DNS Name: 166-78-61-124.static.cloud-ips.com
-    //Public IP Address: 166.78.61.124
-    //Private IP Address: 10.182.24.87
-    //Password: BoBPErQFh2Lf
-    //Environment: _default
-    //Run List: role[devmaster]
-  
-  $data = array();
-  $data_lines = array_slice($lines, -12);
-  foreach ($data_lines as $line){
-    drush_log($line, 'ok');
-    list($key, $value) = explode(": ", $line);
-    $data[$key] = $value;
-  }
+  shop_exec($cmd, TRUE);
   
   // Make sure run list is applied.
   if ($run_list && $data['Environment'] != '_fake'){
     shop_exec("knife node run_list add $server_fqdn $run_list");
   }
-  return $data;
 }
