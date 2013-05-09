@@ -187,6 +187,8 @@ function drush_shop_provision_server_create($server_fqdn){
  * as strings.
  */
 function drush_devudo_server_destroy($name){
+  global $base_url;
+  
   // Check for server
   if (empty($name)){
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'You must give me a server hostname.');
@@ -198,34 +200,70 @@ function drush_devudo_server_destroy($name){
 
   // No nid, bail out.  
   if (!$nid){
-    global $base_url;
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'No Drupal server node by that name was found in site ' . $base_url);
   }
 
   // Load Drupal node and attributes  
   $node = node_load($nid);
   $attributes = $node->attributes;
+  $ip = $attributes->devudo['ip'];
   
   // Find a chef node with this name
   $server = shop_get_server($name);
+  $server_ip = $server->automatic->ipaddress;
+  $instance_data = array();
   
+  // If IP's don't match... Abort
+  if ($server->automatic->ipaddress != $ip) {
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, "IP of $name from $base_url reporting as $ip, IP of $name from Chef Server reporting as $server_ip!  Aborting.");
+  }
+  
+  // If we have a server object...
   if (!empty($server->name)) {
-    drush_log("Chef node $name found.  Preparing to destroy...", 'ok');
+    drush_log("Chef node $name found.  Looking up rackspace instance ID.", 'ok');
     
-    // Get rackspace ID
+    // Get rackspace data
     $list = shop_exec_return('knife rackspace server list');
     $keys = array_filter(array_map('trim', explode("  ", array_shift($list))));
     foreach ($list as $row){
       $item = array_filter(explode(" ", $row));
       $data = array_combine($keys, $item);
       
-      print_r($data);
+      // If name AND ip matches, choose this data and continue.
+      if ($data['Name'] == $name && $data['Public IP'] == $ip) {
+        $instance_data = $data;
+        continue;
+      }
     }
     
+    // If no rackspace match found?  Abort.
+    if (!$instance_data){
+      return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No rackspace server with name $name and Public IP $ip found.");
+    }
+    // Else we have data, confirm deletion
+    else {
+      foreach($instance_data as $key => $value){
+        drush_log("    $key: $value", 'ok', 4);
+      }
+      if (drush_confirm('ARE YOU SURE you want to delete this server?')){
+        drush_log('DESTROY DESTROY DESTROY');
+        $instance_id = $instance_data['Instance ID'];
+        
+        // RUN: knife rackspace server delete INSTANCE-ID -P
+        // -P for purge, deletes chef client and node records too.
+        $cmd = "knife rackspace server delete $instance_id -P -y";
+        shop_exec($cmd, TRUE);
+        drush_log("Rackspace server, chef client, and chef node $name successfully deleted.", 'success');
+        return ;
+      }
+    }
   }
+  // Else if there is no Chef Node with that name
   elseif ($server == 'not found') {
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No chef node with name $name."); 
-  } else {
+  }
+  // Else if something happened with knife...
+  else {
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'Something is wrong with knife');
   }
   
