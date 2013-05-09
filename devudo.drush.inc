@@ -96,7 +96,15 @@ function drush_devudo_server_check($name = ''){
     // @TODO: ONLY do this if the chef node was created by us.  Let's add a
     // node[:devudo][:shopmaster] attribute.
     
-    // Take Drupal $node attributes, copy to server, run chef-client
+    // @TODO: Take Drupal $node attributes, copy to server, run chef-client
+    
+    
+    
+    
+    
+    
+    
+    
 
   }
   // NO CHEF MANAGED SERVER FOUND: Create server
