@@ -128,7 +128,7 @@ function drush_devudo_server_check($name = ''){
  * Returns the short data list that is found when chef is done.
  */
 function drush_shop_provision_server_create($server_fqdn){
-  drush_log("Hi! we're here to make a $role server called $server_fqdn!", 'ok');
+  drush_log("Creating Server: $server_fqdn", 'ok');
   
   $rackspace_flavor = drush_get_option('rackspace_flavor', '2');
   $rackspace_image = drush_get_option('rackspace_image', '5cebb13a-f783-4f8c-8058-c4182c724ccd');
