@@ -97,7 +97,7 @@ function drush_devudo_server_check_validate($name = '') {
     // setting objects as contexts for later.
     drush_set_context('drupal_server_node', $node);
     drush_set_context('drupal_server_node_attributes', $node->attributes);
-    drush_log("Drupal server node loaded:$name[$nid]", 'status');
+    drush_log("Drupal server node loaded: $name [$nid]", 'status');
   }
   
   // Load Chef Node
@@ -197,7 +197,7 @@ function drush_devudo_post_devudo_server_check($name){
     // The rule will skip jenkins if the node is sticky.
     $node->sticky = 1;
     node_save($node);
-    drush_log("Node $node->nid updated.", 'success');
+    drush_log("Node $node->nid updated with IP $ip", 'success');
     
   } else {
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No chef node named '$name' was found on the chef server!");
@@ -264,13 +264,13 @@ function drush_devudo_server_destroy($name){
 
   // Get server attributes as read from Drupal
   $attributes = drush_get_context('drupal_server_node_attributes');
-  $ip = $attributes->devudo['ip'];
+  $ip = $attributes->devudo['ip'];  // CAN BE EMPTY
   
   // Get server attributes as read from Chef
   $server_ip = $chef_node->automatic->ipaddress;
   
   // If IP's don't match... Abort
-  if ($server_ip != $ip) {
+  if (!empty($ip) && $server_ip != $ip) {
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, "IP of $name from $base_url reporting as $ip, IP of $name from Chef Server reporting as $server_ip!  Aborting.");
   }
   
@@ -286,7 +286,7 @@ function drush_devudo_server_destroy($name){
     $data = array_combine($keys, $item);
     
     // If name AND ip matches, choose this data and continue.
-    if ($data['Name'] == $name && $data['Public IP'] == $ip) {
+    if ($data['Name'] == $name && $data['Public IP'] == $server_ip) {
       $instance_data = $data;
       continue;
     }
@@ -294,7 +294,7 @@ function drush_devudo_server_destroy($name){
   
   // If no rackspace match found?  Abort.
   if (!$instance_data){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No rackspace server with name $name and Public IP $ip found.");
+    return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No rackspace server with name $name and Public IP $server_ip found.");
   }
   // Else we have data, confirm deletion
   else {
