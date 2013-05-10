@@ -107,7 +107,7 @@ function drush_devudo_server_check_validate($name = '') {
   // Chef node found
   if (!empty($server->name)) {
     $ip = $server->automatic->ipaddress;
-    drush_log("Chef server node loaded: $name[$ip].", 'status');
+    drush_log("Chef server node loaded: $name [$ip].", 'status');
     drush_set_context('chef_server_node', $server);
   }
   // Something else went wrong
@@ -174,41 +174,36 @@ function drush_devudo_server_check($name = ''){
     
     
   }
-  
-  
-  
-  // Then, take certain attributes we want to have back in devudo.com and save
-  // them to the Drupal $node
-  drush_log('Loading attributes to save back to web.', 'ok');
-  
-  // @TODO: This fails when creating a new server!  This could be the MySQL
-  // Server problem!  The Build took 15 minutes, perhaps this is too long to
-  // keep the DB connection open?
-  
 }
 
 /**
  * Post server check.
  */
-function drush_devudo_post_server_check($name){
+function drush_devudo_post_devudo_server_check($name){
   // Make sure the server exists
   $server = shop_get_server($name);
+  drush_log('drush_devudo_post_server_check', 'ok');
 
   if (!empty($server->name)){
     $ip = $server->automatic->ipaddress;
-    $uptime = $server->automatic->uptime;
     drush_log("Chef node $name found at $ip. Online for $uptime", 'ok');
+    
+    // Save pertinent info back to devudo.com
+    $node = drush_get_context('drupal_server_node');
+    $node->field_ip[LANGUAGE_NONE][0]['value'] = $ip;
+    
+    // Wonderful.  Rules is sending us for a loop!
+    // STICKY means do NOT run devudo-server-check again.
+    // The rule will skip jenkins if the node is sticky.
+    $node->sticky = 1;
+    node_save($node);
+    drush_log("Node $node->nid updated.", 'success');
+    
   } else {
     return drush_set_error(DRUSH_FRAMEWORK_ERROR, "No chef node named '$name' was found on the chef server!");
   }
   
-  // Save pertinent info back to devudo.com
-  $node = drush_get_context('drupal_server_node');
-  $node->field_ip[LANGUAGE_NONE][0]['value'] = $ip;
-  if (!node_save($node)){
-    return drush_set_error(DRUSH_FRAMEWORK_ERROR, 'node_save() failed.');
-  }
-  drush_log("Node $node->nid updated.", 'success');
+  
 }
 
 
